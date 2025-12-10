@@ -191,7 +191,7 @@
         transition: background-color 0.2s ease, transform 0.2s ease,
           box-shadow 0.2s ease;
       }
-      #file-table tbody tr:hover {
+      #file-table tbody tr:hover:not(.folder-header) {
         background-color: var(--hover-bg);
         transform: translateY(-2px);
         box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
@@ -235,6 +235,55 @@
         font-size: 1.6em;
         transition: color 0.2s;
       }
+
+      /* --- تنسيقات القائمة المنسدلة (Accordion) --- */
+      #file-table tbody tr.folder-header {
+        background-color: var(--panel-bg);
+        box-shadow: none;
+        cursor: pointer;
+        margin-top: 15px; /* مسافة أكبر بين المجلدات */
+      }
+      #file-table tbody tr.folder-header:hover {
+        background-color: var(--hover-bg);
+        transform: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+      }
+      .folder-header-content {
+        padding: 10px 15px !important;
+      }
+      .folder-title {
+        display: flex;
+        align-items: center;
+        font-size: 1.15em;
+        font-weight: 700;
+        color: var(--primary-color);
+      }
+      .folder-title .arrow-icon {
+        margin-left: 10px;
+        transition: transform 0.3s ease;
+        font-size: 0.8em;
+        color: var(--light-text);
+      }
+      .folder-title .folder-icon {
+        margin-left: 10px;
+        color: #f7a01a; /* لون أيقونة المجلد */
+        font-size: 1.2em;
+      }
+      .folder-title .file-count {
+        font-size: 0.9em;
+        font-weight: 400;
+        color: var(--light-text);
+        margin-right: 10px;
+      }
+      /* حالة المجلد المفتوح (الافتراضي: الأول يكون مفتوحاً) */
+      #file-table tr.folder-header[data-is-expanded="true"] .arrow-icon {
+        transform: rotate(-90deg);
+      }
+      /* إزالة الهامش العلوي لأول مجلد في القائمة */
+      #file-list tr:first-child.folder-header {
+        margin-top: 0;
+      }
+      /* --- نهاية تنسيقات القائمة المنسدلة --- */
 
       .main-content {
         flex-grow: 1;
@@ -456,7 +505,7 @@
         <div class="viewer-controls">
           <div class="header-info">
             <h2>مستعرض مستندات مدرسة تحفيظ القرآن الابتدائية بالبجادية</h2>
-            <span class="programmer-credit">برمجة : NMO</span>
+            <span class="programmer-credit">برمجة :NMO </span>
           </div>
           <a href="#" id="download-btn" download
             >تحميل الملف<i class="fa-solid fa-download"></i
@@ -484,7 +533,6 @@
         const defaultFile = "تعليمات.pdf"; // اسم الملف الافتراضي إذا كان موجوداً في مجلد 'documents'
 
         // الملفات التي يجب تثبيتها في أعلى القائمة (تظهر أولاً)
-        // يجب أن تكون هذه الأسماء أسماء ملفات فقط وليس مسارات كاملة (مثل تعليمات.pdf)
         const pinnedFiles = [
           "تعليمات.pdf",
           // "ملف مهم آخر.docx"
@@ -525,6 +573,48 @@
             ? '<i class="fa-solid fa-sun"></i>'
             : '<i class="fa-solid fa-moon"></i>';
         });
+        
+        // دالة التحكم بفتح وإغلاق القائمة المنسدلة للمجلدات
+        function toggleFolderVisibility(event) {
+            const headerRow = event.currentTarget;
+            const folderName = headerRow.dataset.folderName;
+            const isExpanded = headerRow.dataset.isExpanded === "true";
+            
+            // إغلاق جميع المجلدات أولاً (سلوك الأكورديون)
+            document.querySelectorAll("#file-list .folder-header").forEach(otherHeader => {
+                if (otherHeader !== headerRow) {
+                    otherHeader.dataset.isExpanded = "false";
+                    otherHeader.querySelector('.arrow-icon').style.transform = 'rotate(0deg)';
+                    
+                    const otherFolderName = otherHeader.dataset.folderName;
+                    document.querySelectorAll(`#file-list tr[data-folder="${otherFolderName}"]`).forEach(fileRow => {
+                        fileRow.style.display = 'none';
+                    });
+                }
+            });
+            
+            if (isExpanded) {
+                // إذا كان مفتوحاً، أغلقه
+                headerRow.dataset.isExpanded = "false";
+                headerRow.querySelector('.arrow-icon').style.transform = 'rotate(0deg)';
+                document.querySelectorAll(`#file-list tr[data-folder="${folderName}"]`).forEach(fileRow => {
+                    fileRow.style.display = 'none';
+                });
+            } else {
+                // إذا كان مغلقاً، افتحه
+                headerRow.dataset.isExpanded = "true";
+                headerRow.querySelector('.arrow-icon').style.transform = 'rotate(-90deg)';
+                
+                // عرض ملفات المجلد المحدد
+                document.querySelectorAll(`#file-list tr[data-folder="${folderName}"]`).forEach(fileRow => {
+                    // فقط اعرض الملفات إذا لم تكن مخفية بسبب البحث (خاصية data-isHiddenBySearch)
+                    if (fileRow.dataset.isHiddenBySearch !== "true") {
+                        fileRow.style.display = '';
+                    }
+                });
+            }
+        }
+        
         // -----------------------------
         
         // وظيفة جلب الملفات من مجلد محدد
@@ -544,8 +634,8 @@
                     .filter((item) => item.type === "file" && !item.name.startsWith("."))
                     .map((item) => ({
                         name: item.name,
-                        path: `${folderPath}/${item.name}`, // المسار الكامل للملف (مثال: أول ابتدائي/المذكرة.pdf)
-                        folder: folderPath,
+                        path: folderPath ? `${folderPath}/${item.name}` : item.name, // المسار الكامل للملف 
+                        folder: folderPath || 'ملفات عامة',
                     }));
             } catch (error) {
                 console.error(`Error fetching files for ${folderPath}:`, error);
@@ -569,15 +659,10 @@
                 allFilesData.push(...filesInFolder);
             }
             
-            // جلب الملفات العامة الموجودة مباشرة في مجلد 'documents' (مثل تعليمات.pdf)
-            const generalFiles = await fetchClassFiles(""); // مسار فارغ يعني مجلد documents
+            // جلب الملفات العامة الموجودة مباشرة في مجلد 'documents'
+            const generalFiles = await fetchClassFiles(""); 
             const generalFilesData = generalFiles.filter(file => !classFolders.includes(file.name));
 
-            generalFilesData.forEach(file => {
-                // تعديل المسار ليكون اسم الملف فقط للملفات العامة
-                file.path = file.name; 
-                file.folder = 'ملفات عامة';
-            });
             allFilesData.push(...generalFilesData);
             
             // ترتيب وعرض الملفات
@@ -606,51 +691,87 @@
               return;
             }
 
-            fileListElement.innerHTML = "";
-            let seq = 1;
-            let currentFolder = "";
-
-            filesData.forEach((fileData) => {
-                // إذا تغير المجلد، أضف صف عنوان للمجلد/الصف
-                if (fileData.folder !== currentFolder) {
-                    currentFolder = fileData.folder;
-                    const folderRow = document.createElement("tr");
-                    folderRow.dataset.isFolder = "true";
-                    folderRow.innerHTML = `<td colspan="3" style="text-align: right; background-color: var(--hover-bg); color: var(--primary-color); font-weight: 700; padding: 10px 15px; border-radius: 8px;">${currentFolder}</td>`;
-                    fileListElement.appendChild(folderRow);
-                    seq = 1; // إعادة تعيين الترقيم لكل مجلد
+            // تجميع الملفات حسب المجلد
+            const filesByFolder = filesData.reduce((acc, fileData) => {
+                const folder = fileData.folder;
+                if (!acc[folder]) {
+                    acc[folder] = [];
                 }
+                acc[folder].push(fileData);
+                return acc;
+            }, {});
 
-                const tr = document.createElement("tr");
-                const fileType = getFileType(fileData.name);
-                tr.dataset.filename = fileData.name;
-                tr.dataset.filepath = fileData.path; // **المسار الكامل الجديد (يشمل اسم المجلد)**
-                tr.dataset.filetype = fileType;
+            fileListElement.innerHTML = "";
+            let seq = 1; 
+            let isFirstFolder = true;
 
-                const tdSeq = document.createElement("td");
-                tdSeq.className = "col-seq";
-                tdSeq.textContent = seq++; 
+            for (const folderName in filesByFolder) {
+                const folderFiles = filesByFolder[folderName];
+                
+                // 1. إنشاء زر المجلد (Folder Header/Accordion Button)
+                const folderHeaderTr = document.createElement("tr");
+                folderHeaderTr.className = "folder-header";
+                folderHeaderTr.dataset.folderName = folderName;
+                folderHeaderTr.dataset.isExpanded = isFirstFolder ? "true" : "false"; // افتح الأول
 
-                const tdName = document.createElement("td");
-                tdName.className = "col-name";
-                tdName.textContent =
-                    fileData.name.substring(0, fileData.name.lastIndexOf(".")) || fileData.name;
+                folderHeaderTr.innerHTML = `
+                    <td colspan="3" class="folder-header-content">
+                        <div class="folder-title">
+                            <i class="fa-solid fa-chevron-left arrow-icon"></i>
+                            <i class="fa-solid fa-folder-open folder-icon"></i>
+                            <span>${folderName}</span>
+                            <span class="file-count">(${folderFiles.length})</span>
+                        </div>
+                    </td>
+                `;
+                fileListElement.appendChild(folderHeaderTr);
+                
+                // إضافة معالج لفتح/غلق المجلد
+                folderHeaderTr.addEventListener("click", toggleFolderVisibility);
 
-                const tdType = document.createElement("td");
-                tdType.className = "col-type";
-                const icon = document.createElement("i");
-                icon.className = getFileIconClass(fileData.name);
-                tdType.appendChild(icon);
+                // 2. إنشاء صفوف الملفات داخل المجلد
+                seq = 1;
+                folderFiles.forEach((fileData) => {
+                    const tr = document.createElement("tr");
+                    const fileType = getFileType(fileData.name);
+                    tr.dataset.filename = fileData.name;
+                    tr.dataset.filepath = fileData.path; 
+                    tr.dataset.filetype = fileType;
+                    tr.dataset.folder = folderName;
+                    tr.dataset.isHiddenBySearch = "false";
+                    
+                    // إخفاء الملفات إذا لم يكن المجلد مفتوحاً
+                    if (!isFirstFolder) {
+                        tr.style.display = 'none';
+                    }
 
-                tr.appendChild(tdSeq);
-                tr.appendChild(tdName);
-                tr.appendChild(tdType);
+                    const tdSeq = document.createElement("td");
+                    tdSeq.className = "col-seq";
+                    tdSeq.textContent = seq++; 
 
-                // تمرير اسم الملف والمسار الكامل
-                tr.addEventListener("click", () => displayFile(fileData.name, fileData.path, tr));
-                fileListElement.appendChild(tr);
-            });
+                    const tdName = document.createElement("td");
+                    tdName.className = "col-name";
+                    tdName.textContent =
+                        fileData.name.substring(0, fileData.name.lastIndexOf(".")) || fileData.name;
 
+                    const tdType = document.createElement("td");
+                    tdType.className = "col-type";
+                    const icon = document.createElement("i");
+                    icon.className = getFileIconClass(fileData.name);
+                    tdType.appendChild(icon);
+
+                    tr.appendChild(tdSeq);
+                    tr.appendChild(tdName);
+                    tr.appendChild(tdType);
+
+                    // تمرير اسم الملف والمسار الكامل
+                    tr.addEventListener("click", () => displayFile(fileData.name, fileData.path, tr));
+                    fileListElement.appendChild(tr);
+                });
+                
+                isFirstFolder = false;
+            }
+            
             // الضغط على الملف الافتراضي
             const defaultFileElement = Array.from(
                 fileListElement.children
@@ -659,7 +780,7 @@
                 defaultFileElement.click();
             } else {
                 // الضغط على أول ملف قابل للعرض
-                const firstFileRow = fileListElement.querySelector("tr:not([data-is-folder='true'])");
+                const firstFileRow = fileListElement.querySelector("tr:not(.folder-header)");
                 if (firstFileRow) {
                     const filename = firstFileRow.dataset.filename;
                     const filepath = firstFileRow.dataset.filepath;
@@ -678,45 +799,60 @@
         function searchAndFilterFiles() {
           const selectedType = filterElement.value;
           const searchTerm = searchElement.value.toLowerCase();
-          const rows = document.querySelectorAll("#file-list tr");
+          const rows = document.querySelectorAll("#file-list tr:not(.folder-header)");
+          
+          let visibleFolders = new Set(); // لتتبع المجلدات التي تحتوي على نتائج بحث مطابقة
 
           rows.forEach((row) => {
-            // تجاهل صفوف العناوين
-            if (row.dataset.isFolder === "true") {
-                row.style.display = "";
-                return;
-            }
-            
             const fileName = row.dataset.filename.toLowerCase();
-            const filePath = row.dataset.filepath.toLowerCase(); // البحث في المسار الكامل
+            const filePath = row.dataset.filepath.toLowerCase();
             const fileType = row.dataset.filetype;
+            const folderName = row.dataset.folder; // اسم المجلد
 
             const typeMatch =
               selectedType === "all" || fileType === selectedType;
-            // البحث يكون في اسم الملف و/أو مساره (يشمل اسم المجلد)
             const searchMatch = fileName.includes(searchTerm) || filePath.includes(searchTerm);
 
             if (typeMatch && searchMatch) {
               row.style.display = "";
+              row.dataset.isHiddenBySearch = "false";
+              visibleFolders.add(folderName);
             } else {
               row.style.display = "none";
+              row.dataset.isHiddenBySearch = "true";
             }
           });
           
-          // **منطق إخفاء/إظهار عناوين المجلدات**
-          const folderRows = document.querySelectorAll("#file-list tr[data-is-folder='true']");
-          folderRows.forEach(folderRow => {
-              let nextSibling = folderRow.nextElementSibling;
-              let hasVisibleFiles = false;
+          // **منطق عرض/إخفاء عناوين المجلدات وتعديل حالتها**
+          document.querySelectorAll("#file-list .folder-header").forEach(folderRow => {
+              const folderName = folderRow.dataset.folderName;
+              const hasVisibleFiles = visibleFolders.has(folderName);
 
-              while(nextSibling && nextSibling.dataset.isFolder !== "true") {
-                  if (nextSibling.style.display !== "none") {
-                      hasVisibleFiles = true;
-                      break;
-                  }
-                  nextSibling = nextSibling.nextElementSibling;
+              if (searchTerm !== "" || selectedType !== "all") {
+                   // وضع البحث: أظهر فقط المجلدات التي تحتوي على نتائج واجعلها مفتوحة
+                   if (hasVisibleFiles) {
+                       folderRow.style.display = "";
+                       folderRow.dataset.isExpanded = "true";
+                       folderRow.querySelector('.arrow-icon').style.transform = 'rotate(-90deg)';
+                   } else {
+                       folderRow.style.display = "none";
+                   }
+              } else {
+                   // وضع العرض العادي (بعد مسح البحث): أظهر كل العناوين واحتفظ بحالة الطي/الفتح
+                   folderRow.style.display = "";
+                   
+                   // إذا كان المجلد مغلقًا، يجب إخفاء ملفاته حتى وإن كانت نتائج البحث فارغة
+                   if(folderRow.dataset.isExpanded === "false") {
+                        document.querySelectorAll(`#file-list tr[data-folder="${folderName}"]`).forEach(fileRow => {
+                           fileRow.style.display = 'none';
+                       });
+                   } else {
+                        // إذا كان مفتوحاً، أظهر جميع ملفاته (طالما لم تخفها التصفية الأخيرة)
+                        document.querySelectorAll(`#file-list tr[data-folder="${folderName}"][data-isHiddenBySearch="false"]`).forEach(fileRow => {
+                           fileRow.style.display = '';
+                       });
+                   }
               }
-              folderRow.style.display = hasVisibleFiles ? "" : "none";
           });
         }
 
